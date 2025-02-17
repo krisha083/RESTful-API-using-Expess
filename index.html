@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            width: 60%;
+            margin: 50px auto;
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .task-form {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input, select, button {
+            padding: 10px;
+            margin: 5px;
+        }
+
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        #taskList {
+            margin-top: 20px;
+        }
+
+        .task-card {
+            padding: 10px;
+            background-color: #f9f9f9;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .task-card h3 {
+            margin: 0;
+        }
+
+        .task-card p {
+            margin: 5px 0;
+        }
+
+        .task-card button {
+            margin-left: 5px;
+        }
+
+        .todo {
+            background-color: #f8d7da; /* Light red for "To Do" */
+        }
+
+        .in-progress {
+            background-color: #fff3cd; /* Yellow for "In Progress" */
+        }
+
+        .done {
+            background-color: #d4edda; /* Light green for "Done" */
+        }
+
+        .late {
+            background-color: #f8d7da; /* Red background for late tasks */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Manager</h1>
+
+        <div class="task-form">
+            <input type="text" id="taskTitle" placeholder="Enter task title">
+            <select id="taskStatus">
+                <option value="todo">To Do</option>
+                <option value="in-progress">In Progress</option>
+                <option value="done">Done</option>
+            </select>
+            <input type="time" id="taskDueDate">
+            <button id="addTaskButton">Add Task</button>
+        </div>
+
+        <div id="taskList"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const taskList = document.getElementById('taskList');
+            const taskTitle = document.getElementById('taskTitle');
+            const taskStatus = document.getElementById('taskStatus');
+            const taskDueDate = document.getElementById('taskDueDate');
+            const addTaskButton = document.getElementById('addTaskButton');
+
+            // Function to get the current IST time
+            function getISTTime() {
+                const currentDate = new Date();
+                const istOffset = 5.5 * 60; // IST is UTC +5:30
+                const utc = currentDate.getTime() + currentDate.getTimezoneOffset() * 60000;
+                const istDate = new Date(utc + (istOffset * 60000));
+                return istDate;
+            }
+
+            // Function to check if the task is late (based on IST)
+            function isTaskLate(dueDate) {
+                const currentIST = getISTTime(); // Get current IST time
+                const [hours, minutes] = dueDate.split(':');
+                const dueDateObj = new Date(currentIST);
+                dueDateObj.setHours(hours);
+                dueDateObj.setMinutes(minutes);
+                dueDateObj.setSeconds(0);
+
+                return currentIST > dueDateObj; // If the current time is past the due time
+            }
+
+            // Fetch and display tasks with due time formatted
+            function loadTasks() {
+                fetch('/tasks')
+                    .then(response => response.json())
+                    .then(tasks => {
+                        taskList.innerHTML = ''; // Clear current task list
+                        tasks.forEach(task => {
+                            const taskCard = document.createElement('div');
+                            taskCard.classList.add('task-card');
+                            const dueTime = task.dueDate;
+                            const taskIsLate = isTaskLate(dueTime);
+
+                            // Set the task color based on status and if it's late
+                            let taskClass = '';
+                            if (task.status === 'done') {
+                                taskClass = 'done';
+                            } else if (task.status === 'in-progress') {
+                                taskClass = 'in-progress';
+                            } else if (taskIsLate) {
+                                taskClass = 'late';  // If the task is late, we mark it red
+                            } else {
+                                taskClass = 'todo';
+                            }
+
+                            taskCard.classList.add(taskClass);
+
+                            // Insert task details and buttons into task card
+                            taskCard.innerHTML = `
+                                <h3>${task.title}</h3>
+                                <p>Status: <strong>${task.status}</strong></p>
+                                <p>Due: <strong>${dueTime}</strong></p>
+                                <button onclick="deleteTask(${task.id})">Delete</button>
+                                <button onclick="updateTaskStatus(${task.id}, '${task.status === 'todo' ? 'in-progress' : 'done'}')">Update Status</button>
+                            `;
+
+                            taskList.appendChild(taskCard);
+                        });
+                    });
+            }
+
+            // Add task
+            addTaskButton.addEventListener('click', () => {
+                const title = taskTitle.value.trim();
+                const status = taskStatus.value;
+                const dueDate = taskDueDate.value; // This will be in HH:MM format (time input)
+
+                if (!title || !dueDate) {
+                    alert('Title and Due Time are required');
+                    return;
+                }
+
+                // Convert the HH:MM input to HH:MM:SS format
+                const formattedDueDate = `${dueDate}:00`; // Add ":00" for seconds (HH:MM:SS)
+
+                fetch('/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, status, dueDate: formattedDueDate })
+                })
+                    .then(response => response.json())
+                    .then(() => {
+                        loadTasks();
+                        taskTitle.value = '';
+                        taskDueDate.value = '';
+                    });
+            });
+
+            // Delete task
+            window.deleteTask = function (id) {
+                fetch(`/tasks/${id}`, { method: 'DELETE' })
+                    .then(() => loadTasks());
+            };
+
+            // Update task status
+            window.updateTaskStatus = function (id, status) {
+                fetch(`/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                })
+                    .then(() => loadTasks());
+            };
+
+            // Initial load of tasks
+            loadTasks();
+        });
+    </script>
+</body>
+</html>
